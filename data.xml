@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<context>
+    <creationDate>04-10-2025 08:56:10</creationDate>
+    <movies>
+        <entry>
+            <key>1</key>
+            <value>
+                <id>841394585</id>
+                <name>Popi</name>
+                <coordinates>
+                    <X>10</X>
+                    <Y>100.1</Y>
+                </coordinates>
+                <creationDate>04-18-2026 13:47:10</creationDate>
+                <oscarsCount>100</oscarsCount>
+                <usaBoxOffice>101909</usaBoxOffice>
+                <tagline>Nope</tagline>
+                <mpaaRating>R</mpaaRating>
+            </value>
+        </entry>
+        <entry>
+            <key>4</key>
+            <value>
+                <id>1935754805</id>
+                <name>Bebra4</name>
+                <coordinates>
+                    <X>4</X>
+                    <Y>4.0</Y>
+                </coordinates>
+                <creationDate>04-18-2026 09:07:46</creationDate>
+                <oscarsCount>400</oscarsCount>
+                <usaBoxOffice>101909</usaBoxOffice>
+                <tagline>bebra</tagline>
+                <mpaaRating>PG_13</mpaaRating>
+            </value>
+        </entry>
+        <entry>
+            <key>6</key>
+            <value>
+                <id>112321272</id>
+                <name>Bebra0</name>
+                <coordinates>
+                    <X>0</X>
+                    <Y>0.0</Y>
+                </coordinates>
+                <creationDate>04-18-2026 13:31:09</creationDate>
+                <oscarsCount>10</oscarsCount>
+                <usaBoxOffice>10001</usaBoxOffice>
+                <tagline>nooope</tagline>
+                <mpaaRating>PG</mpaaRating>
+            </value>
+        </entry>
+    </movies>
+</context>
