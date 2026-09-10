@@ -2,23 +2,24 @@ package org.server.service;
 
 import org.common.CommandInfo;
 import org.server.commands.*;
+import java.util.Collections;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class CommandExecuter {
-
+    private static CommandExecuter instance;
     public List<String> fileNames = new ArrayList<>();
-    private LinkedHashMap<String, Command> commands;
+    private Map<String, Command> commands;
 
 
     public CommandExecuter(){
-        commands = new LinkedHashMap<>();
+        commands = Collections.synchronizedMap(new LinkedHashMap<>());
         addCommand(new HelpCommand(this));
         addCommand(new InfoCommand());
         addCommand(new ClearCommand());
         addCommand(new ExitCommand());
-        addCommand(new ExecuteScriptCommand());
+        //addCommand(new ExecuteScriptCommand());
         addCommand(new MaxByNameCommand());
         addCommand(new InsertCommand());
         addCommand(new PrintUniqueTaglineCommand());
@@ -26,9 +27,17 @@ public class CommandExecuter {
         addCommand(new RemoveKeyCommand());
         addCommand(new RemoveLowerCommand());
         addCommand(new ReplaceGreaterCommand());
-        addCommand(new ShowCommand());
+        //addCommand(new ShowCommand());
         addCommand(new UpdateCommand());
+        addCommand(new ShowCommand());
 
+    }
+
+    public static CommandExecuter getInstance() {
+        if (instance == null) {
+            instance = new CommandExecuter();
+        }
+        return instance;
     }
 
     public Command getCommand(String name) {return commands.get(name);}

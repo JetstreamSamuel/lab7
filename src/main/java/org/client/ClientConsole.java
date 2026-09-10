@@ -18,12 +18,15 @@ public class ClientConsole {
     private static final int SERVER_PORT = 35555;
     private static final Logger logger = LogManager.getLogger(ClientConsole.class);
     private Map<String, CommandInfo> serverCommands;
+    private boolean isRegistration;
+    private String currentLogin;
+    private String currentPassword;
 
 
 
     private void syncCommands(SocketChannel client) throws Exception {
         logger.debug("Запрос списка команд у сервера");
-        Request request = new Request("get_commands", null, null);
+        Request request = new Request("get_commands", null, null, isRegistration, currentLogin, currentPassword);
         byte[] requestBytes = serializeRequest(request);
         ByteBuffer buffer = ByteBuffer.allocate(4 + requestBytes.length);
         buffer.putInt(requestBytes.length);
@@ -45,20 +48,60 @@ public class ClientConsole {
         client.run();
     }
 
+    private void registerPpl(Scanner scanner, SocketChannel client) throws Exception {
+        while (true) {
+            System.out.println("Вы зарегистрированы? Y/N ");
+            String answer = scanner.nextLine().trim().toLowerCase();
+
+            if (answer.equals("exit")) System.exit(0);
+
+            boolean isRegAction = answer.equals("n");
+
+            System.out.print("Введите логин: ");
+            String login = scanner.nextLine().trim();
+            System.out.print("Введите пароль: ");
+            String password = scanner.nextLine().trim();
+
+            String hashedPassword = password;
+
+            Request request = new Request("check_auth", null, null, isRegAction, login, hashedPassword);
+
+            byte[] requestBytes = serializeRequest(request);
+            ByteBuffer buffer = ByteBuffer.allocate(4 + requestBytes.length);
+            buffer.putInt(requestBytes.length);
+            buffer.put(requestBytes);
+            buffer.flip();
+            while (buffer.hasRemaining()) {
+                client.write(buffer);
+            }
+            Response response = readResponse(client);
+            if (response.isSuccess()) {
+                System.out.println("Успешно! " + response.getMessage());
+                this.currentLogin = login;
+                this.currentPassword = hashedPassword;;
+                break;
+            } else {
+                System.out.println("Ошибка: " + response.getMessage());
+                System.out.println("Попробуйте еще раз.\n");
+            }
+        }
+    }
+
     public void run(){
         logger.info("Попытка подключения к серверу {}:{}", SERVER_HOST, SERVER_PORT);
         try (SocketChannel client = SocketChannel.open(new InetSocketAddress(SERVER_HOST, SERVER_PORT))) {
+            Scanner scanner = new Scanner(System.in);
             logger.info("Соединение с сервером успешно установлено.");
+            registerPpl(scanner, client);
             syncCommands(client);
-            clientProcess(client);
+            clientProcess(client, scanner);
         } catch (Exception e) {
             logger.error("Критическая ошибка клиента: {}", e.getMessage());
 
         }
     }
 
-    private void clientProcess(SocketChannel client) throws IOException, ClassNotFoundException {
-        Scanner scanner = new Scanner(System.in);
+    private void clientProcess(SocketChannel client, Scanner scanner) throws IOException, ClassNotFoundException {
         while (true) {
             process(client, scanner,false);
         }
@@ -129,7 +172,7 @@ public class ClientConsole {
 
         if (info != null) {
             if (info.needObject()) {
-                System.out.println("Create Ticket: ");
+                System.out.println("Create Movie: ");
                 CreateMovie cm = new CreateMovie(scanner,isScript);
                 movieArg = cm.createMovie();
             }
@@ -138,7 +181,7 @@ public class ClientConsole {
             return;
         }
         logger.info("Отправка команды '{}' на сервер...", cmdName);
-        Request request = new Request(cmdName, key, movieArg);
+        Request request = new Request(cmdName, key, movieArg, isRegistration, currentLogin, currentPassword);
 
         byte[] requestBytes = serializeRequest(request);
         ByteBuffer buffer = ByteBuffer.allocate(4 + requestBytes.length);

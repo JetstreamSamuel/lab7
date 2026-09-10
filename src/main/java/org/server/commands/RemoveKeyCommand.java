@@ -1,15 +1,19 @@
 package org.server.commands;
 
 import org.server.service.Context;
+import org.server.service.DBManager;
 
 public class RemoveKeyCommand extends Command implements TypeOfArgument{
     private Context context = Context.getInstance();
+    private DBManager dbManager = DBManager.getInstance();
+
+
     public RemoveKeyCommand() {super("remove_key");}
 
     @Override
     public String execute() {
         String key = args.key;
-        context.removeKey(key);
+        if (dbManager.removeMovie(args.key, args.id)) context.removeKey(key);
         return "Successfully removed";
     }
 

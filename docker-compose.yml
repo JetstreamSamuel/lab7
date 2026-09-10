@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: lab7_db
+    environment:
+      POSTGRES_USER: s504920
+      POSTGRES_PASSWORD: s504920
+      POSTGRES_DB: lab7
+    ports:
+      - "5432:5432"
+    volumes:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lab7"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+

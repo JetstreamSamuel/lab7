@@ -11,11 +11,17 @@ public class Request implements Serializable {
     private final String type;
     private final String args;
     private final Object object;
+    private boolean isRegistration;
+    private final String login;
+    private final String password;
 
-    public Request(String type, String args, Object object) {
+    public Request(String type, String args, Object object, boolean isRegistration, String login, String password) {
         this.type = type;
         this.args = args;
         this.object = object;
+        this.isRegistration = isRegistration;
+        this.login = login;
+        this.password = password;
     }
 
     public String getCommandName() {

@@ -3,6 +3,7 @@ package org.server.commands;
 import org.models.Movie;
 import org.server.service.Context;
 import org.client.CreateMovie;
+import org.server.service.DBManager;
 
 public class ReplaceGreaterCommand extends Command implements TypeOfArgument{
     private Context context = Context.getInstance();
@@ -14,8 +15,9 @@ public class ReplaceGreaterCommand extends Command implements TypeOfArgument{
         if (context.getKeys().contains(key)) {
             Movie target = args.movie;
             Movie prev = context.getElem(key);
-            if (target.compareTo(prev) > 0) {context.add(key, target);}
+            if (target.compareTo(prev) > 0) {DBManager.getInstance().saveToBd(target, key, args.id);}
         } else {return "Такого ключа нет!";}
+        DBManager.getInstance().loadMovies(context);
         return "Successfully replaced";
     }
 

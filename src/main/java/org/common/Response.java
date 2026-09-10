@@ -10,9 +10,16 @@ import java.io.Serializable;
 public class Response implements Serializable {
     private final String message;
     private final Object data;
+    private boolean isSuccess;
 
     public Response(String message, Object data) {
         this.message = message;
         this.data = data;
+    }
+
+    public Response(String message, Object data, boolean isSuccess) {
+        this.message = message;
+        this.data = data;
+        this.isSuccess = isSuccess;
     }
 }

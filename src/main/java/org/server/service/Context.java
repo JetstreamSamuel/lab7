@@ -3,7 +3,9 @@ package org.server.service;
 import org.models.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -19,12 +21,12 @@ public class Context {
 
     @XmlElementWrapper(name = "movies")
     @XmlElement(name = "movie")
-    private HashMap<String, Movie> collection;
+    private Map<String, Movie> collection;
 
     private static Context instance;
 
     public Context() {
-        collection = new HashMap<>();
+        collection = Collections.synchronizedMap(new HashMap<>());
         creationDate = LocalDateTime.now();
         instance = this;
     }
@@ -38,7 +40,6 @@ public class Context {
 
     public void clear() {collection.clear();}
 
-    public void add(String key, Movie movie) {collection.put(key, movie);}
 
     public String show() {
         return collection.entrySet().stream()

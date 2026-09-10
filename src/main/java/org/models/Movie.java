@@ -2,15 +2,17 @@ package org.models;
 
 import jakarta.xml.bind.annotation.*;
 import jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
+import lombok.AllArgsConstructor;
 import org.utils.adapters.XmlDateAdapter;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.UUID;
 
 @XmlRootElement(name="movie")
 @XmlAccessorType(XmlAccessType.FIELD)
+@AllArgsConstructor
 public class Movie implements Comparable<Movie>, Serializable {
     @XmlElement(name="id")
     private int id;
@@ -23,7 +25,7 @@ public class Movie implements Comparable<Movie>, Serializable {
 
     @XmlElement(name="creationDate")
     @XmlJavaTypeAdapter(XmlDateAdapter.class)
-    private LocalDateTime creationDate;
+    private ZonedDateTime creationDate;
 
     @XmlElement(name="oscarsCount")
     private long oscarsCount;
@@ -52,15 +54,12 @@ public class Movie implements Comparable<Movie>, Serializable {
         this.mpaaRating = mpaaRating;
         this.director = director;
 
-        id = Math.abs(UUID.randomUUID().hashCode());
-        creationDate = LocalDateTime.now();
-
     }
 
     public Integer getId() {return id;}
     public String getName() {return name;}
     public Coordinates getCoordinates() {return coordinates;}
-    public LocalDateTime getCreationDate() {return creationDate;}
+    public ZonedDateTime getCreationDate() {return creationDate;}
     public long getOscarsCount() {return oscarsCount;}
     public long getUsaBoxOffice() {return usaBoxOffice;}
     public String getTagline() {return tagline;}
@@ -70,7 +69,7 @@ public class Movie implements Comparable<Movie>, Serializable {
     public void setId(int id) {this.id = id;}
     public void setName(String name) {this.name = name;}
     public void setCoordinates(Coordinates coordinates) {this.coordinates = coordinates;}
-    public void setCreationDate(LocalDateTime date) {this.creationDate = date;}
+    public void setCreationDate(ZonedDateTime date) {this.creationDate = date;}
     public void setOscarsCount(long oscarsCount) {this.oscarsCount = oscarsCount;}
     public void setTagline(String tagline) {this.tagline = tagline;}
     public void setMpaaRating(MpaaRating mpaaRating) {this.mpaaRating = mpaaRating;}

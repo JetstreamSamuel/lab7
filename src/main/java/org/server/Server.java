@@ -18,19 +18,24 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Scanner;
-import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 public class Server {
     private final Logger logger = LogManager.getLogger(Server.class);
-    private static final String fileName = "data.xml";
-    private Context context;
-    private CommandExecuter commandExecuter;
+    private Context context = Context.getInstance();
+    private CommandExecuter commandExecuter = CommandExecuter.getInstance();
+    private final DBManager dbManager = DBManager.getInstance();
     private final InetAddress address;
     private final int PORT;
+    private final ExecutorService ioPool = Executors.newCachedThreadPool();
+    private final ExecutorService fixedPool = Executors.newFixedThreadPool(3);
 
 
 
@@ -44,7 +49,6 @@ public class Server {
         try {
             InetAddress address = InetAddress.getByName("0.0.0.0");
             Server server = new Server(address,35555);
-
             server.startServer();
         } catch (Exception e) {
             e.printStackTrace();
@@ -53,14 +57,8 @@ public class Server {
     }
 
     public void startServer(){
-        logger.info("Попытка загрузки коллекции из файла: {}", fileName);
-        try {
-            context = FileManager.loadXML(fileName);
-        } catch (Exception e) {
-            logger.error("Ошибка загрузки коллекции из файла: {}", fileName);
-            context = new Context();
-        }
-        commandExecuter = new CommandExecuter();
+        dbManager.createTables();
+        dbManager.loadMovies(context);
         startConsoleThread();
         try{
             try (var serverSocketChannel = ServerSocketChannel.open()) {
@@ -84,7 +82,7 @@ public class Server {
                             }
                             if (key.isReadable()) {
                                 SocketChannel client = (SocketChannel) key.channel();
-                                readFromClient(client);
+                                readFromClient(client, key);
                             }
                         }
                     }
@@ -107,39 +105,57 @@ public class Server {
         }
     }
 
-    private void readFromClient(SocketChannel client){
-        ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-        try{
-            int readByte = client.read(lengthBuffer);
-            if(readByte == -1){
-                logger.info("Client disconnected:{}",client.getRemoteAddress());
-                client.close();
-                return;
-            }
-            if (readByte < 4){
-                while(lengthBuffer.position() < 4) {
-                    client.read(lengthBuffer);
+    private void readFromClient(SocketChannel client, SelectionKey key){
+        key.interestOps(0);
+        ioPool.submit(() -> {
+            try{
+                ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
+                if (client.read(lengthBuffer) <= 0) return;
+                lengthBuffer.flip();
+                int length = lengthBuffer.getInt();
+                ByteBuffer bodyBuffer = ByteBuffer.allocate(length);
+                while (bodyBuffer.hasRemaining()) {
+                    client.read(bodyBuffer);
                 }
+                bodyBuffer.flip();
+                byte[] data = new byte[bodyBuffer.remaining()];
+                bodyBuffer.get(data);
+                Request request = deserializeRequest(data);
+
+                CompletableFuture<Response> processingFuture = new CompletableFuture<>();
+
+                new Thread(() -> {
+                    try {
+                        Response response = handleRequest(request);
+                        processingFuture.complete(response);
+                    } catch (Exception e) {
+                        processingFuture.completeExceptionally(e);
+                    }
+                }).start();
+
+                processingFuture.thenAcceptAsync(response -> {
+                    try {
+                        sendResponse(client, response);
+                    } catch (IOException e) {
+                        logger.error("Ошибка отправки " + e.getMessage());
+                    } finally {
+                        synchronized (key) {
+                            if (key.isValid()) {
+                                key.interestOps(SelectionKey.OP_READ);
+                                key.selector().wakeup();
+                            }
+                        }
+                    }
+                }, fixedPool);
+
+
+            } catch (Exception e) {
+                logger.error("Ошибка при чтении из клиента: " + e.getMessage());
+                key.cancel();
+                try { client.close(); } catch (IOException ignored) {}
             }
-            lengthBuffer.flip();
-            int dataLength = lengthBuffer.getInt();
-            logger.debug("Получен заголовок: ожидаемый размер данных: {} байт", dataLength);
-            ByteBuffer bodyBuf = ByteBuffer.allocate(dataLength);
-            while (bodyBuf.hasRemaining()) {
-                client.read(bodyBuf);
-            }
+        });
 
-            bodyBuf.flip();
-            byte[] resBytes = new byte[bodyBuf.remaining()];
-            bodyBuf.get(resBytes);
-            Request request = deserializeRequest(resBytes);
-            logger.debug("Запрос успешно десериализован: {}", request.getCommandName());
-            processing(request,client);
-
-
-        } catch (Exception e) {
-            logger.error(e);
-        }
     }
 
     private Request deserializeRequest(byte[] bytes) throws IOException, ClassNotFoundException {
@@ -155,89 +171,75 @@ public class Server {
         return baos.toByteArray();
     }
 
-    public void processing(Request request, SocketChannel client) {
+    public String hashPassword(String password) {
         try {
-            if (request == null){
-                logger.warn("Получен пустой запрос от клиента");
-                return;
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] messageDigest = md.digest(password.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : messageDigest) {
+                sb.append(String.format("%02x", b));
             }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Ошибка хэширования", e);
+        }
+    }
+
+    public Response handleRequest(Request request) {
+        try {
+            if (request == null) return new Response("Пустой запрос", null);
+
             String commandName = request.getCommandName();
-            logger.info("Command accepted: {}", commandName);
-            Response response;
+            String login = request.getLogin();
+            String password = hashPassword(request.getPassword());
+            boolean isRegistration = request.isRegistration();
+            if (commandName.equalsIgnoreCase("check_auth")) {
+                if (isRegistration) {
+                    boolean success = dbManager.registerUser(login, password);
+                    return new Response(success ? "Регистрация успешна" : "Этот логин уже занят.", null, success);
+                } else {
+                    boolean success = dbManager.checkUser(login, password);
+                    return new Response(success ? "Вход выполнен" : "Неверный логин или пароль.", null, success);
+                }
+            }
+
+            if (!commandName.equalsIgnoreCase("get_commands") && !dbManager.checkUser(login, password)) {
+                return new Response("Ошибка авторизации", null, false);
+            }
 
             if (commandName.equalsIgnoreCase("get_commands")) {
-                Map<String, CommandInfo> commandData = commandExecuter.getCommandsData();
-                response = new Response("Команды синхронизированны", commandData);
-            } else {
-                Command cmd = commandExecuter.getCommand(commandName);
-                if (cmd == null) {
-                    response = new  Response("Нет такой команды", null);
-                    sendResponse(client, response);
-                    return;
-                }
-                if(cmd.needArg()) {
-                    TypeOfArgument tp = (TypeOfArgument) cmd;
-                    if (tp.typeOfArgument().equals("String")) {
-                        try {
-                            String key = request.getStringArg();
-                            if (cmd.needMoreThanOneArg()) {
-                                TypeOfSecondArgument tp2 = (TypeOfSecondArgument) cmd;
-                                if (tp2.typeOfSecondArgument().equals("Movie")) {
-                                    Movie movie = (Movie) request.getObjectArg();
-                                    ArgsForCommands args = new ArgsForCommands(key, movie);
-                                    cmd.setArgs(args);
-                                }
-                            } else {
-                                ArgsForCommands args = new ArgsForCommands(key);
-                                cmd.setArgs(args);
-                            }
-                        } catch (Exception e) {
-                            logger.warn("Ошибка в аргументах команды {}: {}", commandName, e.getMessage());
-                            response = new Response("Mistake in argue " + e.getMessage(), null);
-                            sendResponse(client, response);
-                            return;
+                return new Response("Command synchronized", commandExecuter.getCommandsData());
+            }
+
+            Command cmd = commandExecuter.getCommand(commandName);
+            if (cmd == null) return new Response("Команда не найдена", null);
+
+            if (cmd.needArg()) {
+                TypeOfArgument tp = (TypeOfArgument) cmd;
+                if (tp.typeOfArgument().equals("String")) {
+                    String key = request.getStringArg();
+                    if (cmd.needMoreThanOneArg()) {
+                        TypeOfSecondArgument tp2 = (TypeOfSecondArgument) cmd;
+                        if (tp2.typeOfSecondArgument().equals("Movie")) {
+                            Movie movie = (Movie) request.getObjectArg();
+                            cmd.setArgs(new ArgsForCommands(key, movie, new Login(login)));
                         }
-                    } else if (tp.typeOfArgument().equals("fileName")) {
-                        FileName filenameFromPerson = new FileName(request.getStringArg());
-                        if (commandExecuter.fileNames.contains(filenameFromPerson.name())) {
-                            System.out.println("Cyclic dependency in the file");
-                            return;
-                        }
-                        commandExecuter.fileNames.add(filenameFromPerson.name());
-                        ArgsForCommands args = new ArgsForCommands(filenameFromPerson);
-                        cmd.setArgs(args);
-                    } else if (tp.typeOfArgument().equals("Integer")) {
-                        try {
-                            Integer id = Integer.valueOf(request.getArgs());
-                            if (cmd.needMoreThanOneArg()) {
-                                TypeOfSecondArgument tp2 = (TypeOfSecondArgument) cmd;
-                                if (tp2.typeOfSecondArgument().equals("Movie")) {
-                                    Movie movie = (Movie) request.getObjectArg();
-                                    ArgsForCommands args = new ArgsForCommands(id, movie);
-                                    cmd.setArgs(args);
-                                }
-                            } else {
-                                ArgsForCommands args = new ArgsForCommands(id);
-                                cmd.setArgs(args);
-                            }
-                        } catch (Exception e) {
-                            logger.warn("Ошибка в аргументах команды {}: {}", commandName, e.getMessage());
-                            response = new Response("Mistake in argue " + e.getMessage(), null);
-                            sendResponse(client, response);
-                            return;
-                        }
+                    } else {
+                        cmd.setArgs(new ArgsForCommands(key, new Login(login)));
                     }
+                } else if (tp.typeOfArgument().equals("fileName")) {
+                    FileName filename = new FileName(request.getStringArg());
+                    cmd.setArgs(new ArgsForCommands(filename));
                 }
-                String result = cmd.execute();
-                response = new Response(result, null);
+            } else {
+                cmd.setArgs(new ArgsForCommands(login));
             }
-            sendResponse(client, response);
+
+            String result = cmd.execute();
+            return new Response(result, null);
         } catch (Exception e) {
-            try {
-                logger.info("Сессия с клиентом {} завершена", client.getRemoteAddress());
-            } catch (IOException w) {
-                logger.info("Сессия с клиентом завершена (адрес недоступен)");
-            }
+            logger.error("Ошибка", e);
+            return new Response("Ошибка сервера " + e.getMessage(), null);
         }
     }
 
@@ -259,16 +261,8 @@ public class Server {
             Scanner scanner = new Scanner(System.in);
             while (scanner.hasNextLine()) {
                 String line = scanner.nextLine().trim();
-                if (line.equalsIgnoreCase("save")) {
-                    logger.info("Сохранение коллекции в файл по команде из консоли");
-                    try {FileManager.writeXML(context, fileName);} catch (Exception e) {
-                        logger.error("Ошибка сохранения коллекции в файл");
-                    }
-                } else if (line.equalsIgnoreCase("exit")) {
+                if (line.equalsIgnoreCase("exit")) {
                     logger.info("Завершение работы сервера");
-                    try {FileManager.writeXML(context, fileName);} catch (Exception e) {
-                        logger.error("Ошибка сохранения коллекции в файл");
-                    }
                     System.exit(0);
                 }
             }
@@ -278,3 +272,33 @@ public class Server {
     }
 
 }
+
+//  server:
+//    image: eclipse-temurin:17-jre-alpine
+//    container_name: lab7_server
+//    volumes:
+//      - ./build/libs:/app
+//    working_dir: /app
+//    command: java -jar lab7-server-1.0-SNAPSHOT.jar
+//    depends_on:
+//      db:
+//        condition: service_healthy
+//    ports:
+//      - "12345:12345"
+//    stdin_open: true
+//    tty: true
+//
+//  client:
+//    image: eclipse-temurin:17-jre-alpine
+//    container_name: lab7_client
+//    volumes:
+//      - ./build/libs:/app
+//    working_dir: /app
+//    command: java -jar lab7-client-1.0-SNAPSHOT.jar
+//    depends_on:
+//      - server
+//    stdin_open: true
+//    tty: true
+//
+//volumes:
+//  lab7_postgres_data:

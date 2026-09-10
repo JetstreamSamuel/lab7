@@ -8,9 +8,25 @@ public class ArgsForCommands {
     public Movie movie;
     public String key;
     public Integer id;
+    public Login login;
 
     public FileName fileName;
     public SocketChannel socketChannel;
+
+    public ArgsForCommands(String key, Movie movie, Login login) {
+        this.key = key;
+        this.movie = movie;
+        this.login = login;
+    }
+
+    public ArgsForCommands(String key, Login login) {
+        this.key = key;
+        this.login = login;
+    }
+
+    public ArgsForCommands(Login login) {
+        this.login = login;
+    }
 
     public ArgsForCommands(String key, Movie movie) {
         this.key = key;
@@ -33,11 +49,10 @@ public class ArgsForCommands {
         this.movie = movie;
     }
 
-
-    public ArgsForCommands(SocketChannel socketChannel) {
+    public ArgsForCommands(SocketChannel socketChannel, Login login) {
         this.socketChannel = socketChannel;
+        this.login = login;
     }
 
-
-
+    public ArgsForCommands(SocketChannel socketChannel) {this.socketChannel = socketChannel;}
 }

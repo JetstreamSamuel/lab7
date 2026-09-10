@@ -1,6 +1,7 @@
 package org.server.commands;
 
 import org.server.service.Context;
+import org.server.service.DBManager;
 
 public class RemoveLowerKeyCommand extends Command implements TypeOfArgument{
     private Context context = Context.getInstance();
@@ -10,8 +11,9 @@ public class RemoveLowerKeyCommand extends Command implements TypeOfArgument{
     public String execute() {
         String bigKey = args.key;
         for (var key : context.getKeys()) {
-            if (bigKey.compareTo(key) > 0) {context.removeKey(key);}
+            if (bigKey.compareTo(key) > 0) {DBManager.getInstance().removeMovie(key, args.id);}
         }
+        DBManager.getInstance().loadMovies(context);
         return "Removed lower";
     }
 
